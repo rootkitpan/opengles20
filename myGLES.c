@@ -17,8 +17,11 @@ int InitEGLSettings(PMY_APP_INFO appInfo)
 	EGLint majorVersion = 0;
 	EGLint minorVersion = 0;
 	EGLint configAttributes[] = {
-		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+		EGL_SURFACE_TYPE,		EGL_WINDOW_BIT,
+		EGL_RENDERABLE_TYPE,	EGL_OPENGL_ES2_BIT,
+		EGL_RED_SIZE,			8,
+		EGL_GREEN_SIZE,			8,
+		EGL_BLUE_SIZE,			8,
 		EGL_NONE
 	};
 	EGLint numConfigs = 0;
@@ -29,47 +32,59 @@ int InitEGLSettings(PMY_APP_INFO appInfo)
 		EGL_CONTEXT_CLIENT_VERSION, 2,
 		EGL_NONE
 	};
+	int ret = 0;
 
-	display = eglGetDisplay(appInfo->nativeDisplayType);
-	if (display == EGL_NO_DISPLAY) {
-		return -1;
-	}
+	do{
+		display = eglGetDisplay(appInfo->nativeDisplay);
+		if (display == EGL_NO_DISPLAY) {
+			ret = -1;
+			break;
+		}
 
-	bRet = eglInitialize(display, &majorVersion, &minorVersion);
-	if (bRet != EGL_TRUE) {
-		return -2;
-	}
+		bRet = eglInitialize(display, &majorVersion, &minorVersion);
+		if (bRet != EGL_TRUE) {
+			ret = -2;
+			break;
+		}
 
-	bRet = eglBindAPI(EGL_OPENGL_ES_API);
-	if (bRet != EGL_TRUE) {
-		return -3;
-	}
+		bRet = eglChooseConfig(display, configAttributes, &config, 1, &numConfigs);
+		if (bRet != EGL_TRUE) {
+			ret = -3;
+			break;
+		}
 
-	bRet = eglChooseConfig(display, configAttributes, &config, 1, &numConfigs);
-	if (bRet != EGL_TRUE) {
-		return -4;
-	}
+		surface = eglCreateWindowSurface(display, config, appInfo->nativeWindow, NULL);
+		if (surface == EGL_NO_SURFACE) {
+			ret = -4;
+			break;
+		}
 
-	surface = eglCreateWindowSurface(display, config, appInfo->nativeWindowType, NULL);
-	if (surface == EGL_NO_SURFACE) {
-		return -5;
-	}
+		/* call eglBindAPI to tell current thread which Graphic API 
+		 * will be used in this thread before creating context */
+		bRet = eglBindAPI(EGL_OPENGL_ES_API);
+		if (bRet != EGL_TRUE) {
+			ret = -5;
+			break;
+		}
 
-	context = eglCreateContext(display, config, EGL_NO_CONTEXT, contextAttributes);
-	if (context == EGL_NO_CONTEXT) {
-		return -6;
-	}
+		context = eglCreateContext(display, config, EGL_NO_CONTEXT, contextAttributes);
+		if (context == EGL_NO_CONTEXT) {
+			ret = -6;
+			break;
+		}
 
-	bRet = eglMakeCurrent(display, surface, surface, context);
-	if (bRet != EGL_TRUE) {
-		return -7;
-	}
+		bRet = eglMakeCurrent(display, surface, surface, context);
+		if (bRet != EGL_TRUE) {
+			ret = -7;
+			break;
+		}
 
+		appInfo->display = display;
+		appInfo->surface = surface;
+		ret = 0;
+	} while(0);
 
-	appInfo->display = display;
-	appInfo->surface = surface;
-
-	return 0;
+	return ret;
 }
 
 
