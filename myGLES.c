@@ -94,48 +94,61 @@ static int CompileShader(GLenum shaderType, PMY_APP_INFO appInfo)
 	GLint isShaderCompiled = 0;
 	GLuint shader = 0;
 	char* source = NULL;
+	int ret = -1;
 
-	shader = glCreateShader(shaderType);
-	if (shader == 0) {
-		return -1;
-	}
-
-	if (shaderType == GL_VERTEX_SHADER) {
-		source = appInfo->VertexShaderSource;
-	}
-	else if (shaderType == GL_FRAGMENT_SHADER) {
-		source = appInfo->FragmentShaderSource;
-	}
-	else {
-		return -2;
-	}
-	glShaderSource(shader, 1, &source, NULL);
-
-	glCompileShader(shader);
-
-	glGetShaderiv(shader, GL_COMPILE_STATUS, &isShaderCompiled);
-	if (!isShaderCompiled) {
-		int infoLogLength = 0;
-		int charactersWritten = 0;
-		char log[128];
-
-		glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLogLength);
-		if (infoLogLength >= 128) {
-			infoLogLength = 128;
+	do {
+		shader = glCreateShader(shaderType);
+		if (shader == 0) {
+			ret = -1;
+			break;
 		}
 
-		glGetShaderInfoLog(shader, infoLogLength, &charactersWritten, log);
+		if (shaderType == GL_VERTEX_SHADER) {
+			source = appInfo->VertexShaderSource;
+		}
+		else if (shaderType == GL_FRAGMENT_SHADER) {
+			source = appInfo->FragmentShaderSource;
+		}
+		else {
+			ret = -2;
+			break;
+		}
+		glShaderSource(shader, 1, &source, NULL);
 
-		return -3;
+		glCompileShader(shader);
+
+		glGetShaderiv(shader, GL_COMPILE_STATUS, &isShaderCompiled);
+		if (!isShaderCompiled) {
+			int infoLogLength = 0;
+			int charactersWritten = 0;
+			char log[128];
+
+			glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLogLength);
+			if (infoLogLength >= 128) {
+				infoLogLength = 128;
+			}
+
+			glGetShaderInfoLog(shader, infoLogLength, &charactersWritten, log);
+
+			ret = -3;
+			break;
+		}
+
+		if (shaderType == GL_VERTEX_SHADER) {
+			appInfo->vertexShader = shader;
+		} else {
+			appInfo->fragmentShader = shader;
+		}
+	} while(0);
+	
+	if( ret < 0 ){
+		if( shader != 0 ){
+			glDeleteShader(shader);
+			shader = 0;
+		}
 	}
 
-	if (shaderType == GL_VERTEX_SHADER) {
-		appInfo->vertexShader = shader;
-	} else {
-		appInfo->fragmentShader = shader;
-	}
-
-	return 0;
+	return ret;
 }
 
 static int LinkProgram(PMY_APP_INFO appInfo)
