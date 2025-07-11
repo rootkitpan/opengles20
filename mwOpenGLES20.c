@@ -1,16 +1,14 @@
-﻿#include <stdio.h>
-#include <stdlib.h>
-
-#include "mwOpenGLES20.h"
+﻿#include "mwOpenGLES20.h"
 
 
+MWOPENGLES20_NATIVE_INFO gNativeInfo;
 MWOPENGLES20_INFO gInfo;
+MWOPENGLES20_SHADER_INFO gShaderInfo;
 MWOPENGLES20_WINDOW_INFO gWinInfo[MAX_WINDOW];
 
 
-static GLint ATTR_LOCATION_POSITION;
-static GLint ATTR_LOCATION_TEXCOORD;
 
+//
 int InitEGLSettings(MWOPENGLES20_NATIVE_INFO *native)
 {
 	EGLDisplay display = NULL;
@@ -23,6 +21,7 @@ int InitEGLSettings(MWOPENGLES20_NATIVE_INFO *native)
 		EGL_RED_SIZE,			8,
 		EGL_GREEN_SIZE,			8,
 		EGL_BLUE_SIZE,			8,
+		EGL_ALPHA_SIZE,			8,
 		EGL_NONE
 	};
 	EGLint numConfigs = 0;
@@ -80,8 +79,8 @@ int InitEGLSettings(MWOPENGLES20_NATIVE_INFO *native)
 			break;
 		}
 
-		gInfo.native.nativeDisplay = native->nativeDisplay;
-		gInfo.native.nativeWindow = native->nativeWindow;
+		gNativeInfo.nativeDisplay = native->nativeDisplay;
+		gNativeInfo.nativeWindow = native->nativeWindow;
 		gInfo.display = display;
 		gInfo.surface = surface;
 		ret = 0;
@@ -92,13 +91,13 @@ int InitEGLSettings(MWOPENGLES20_NATIVE_INFO *native)
 
 
 char gVertexShaderSource[] = "									\
-	attribute vec4 a_position;									\
+	attribute vec2 a_position;									\
 	attribute vec2 a_texCoord;									\
 	varying vec2 v_texCoord;									\
 																\
 	void main(void)												\
 	{															\
-		gl_Position = a_position;								\
+		gl_Position = vec4(a_position, 0.0, 0.1);				\
 		v_texCoord = a_texCoord;								\
 	}															\
 ";
@@ -116,6 +115,7 @@ char gFragmentShaderSource[] = "								\
 ";
 
 
+//
 int CompileShader(GLenum shaderType, char* source)
 {
 	GLint isShaderCompiled = 0;
@@ -157,9 +157,9 @@ int CompileShader(GLenum shaderType, char* source)
 		}
 
 		if (shaderType == GL_VERTEX_SHADER) {
-			gInfo.vertexShader = shader;
+			gShaderInfo.vertexShader = shader;
 		} else {
-			gInfo.fragmentShader = shader;
+			gShaderInfo.fragmentShader = shader;
 		}
 
 		ret = 0;
@@ -171,9 +171,9 @@ int CompileShader(GLenum shaderType, char* source)
 			shader = 0;
 			
 			if (shaderType == GL_VERTEX_SHADER) {
-				gInfo.vertexShader = 0;
+				gShaderInfo.vertexShader = 0;
 			} else {
-				gInfo.fragmentShader = 0;
+				gShaderInfo.fragmentShader = 0;
 			}
 		}
 	}
@@ -182,6 +182,7 @@ int CompileShader(GLenum shaderType, char* source)
 }
 
 
+//
 int LinkProgram(void)
 {
 	GLuint shaderProgram = 0;
@@ -196,13 +197,13 @@ int LinkProgram(void)
 			break;
 		}
 
-		glAttachShader(shaderProgram, gInfo.vertexShader);
+		glAttachShader(shaderProgram, gShaderInfo.vertexShader);
 		error = glGetError();
 		if (error != GL_NO_ERROR) {
 			ret = -2;
 			break;
 		}
-		glAttachShader(shaderProgram, gInfo.fragmentShader);
+		glAttachShader(shaderProgram, gShaderInfo.fragmentShader);
 		error = glGetError();
 		if (error != GL_NO_ERROR) {
 			ret = -3;
@@ -216,12 +217,12 @@ int LinkProgram(void)
 			break;
 		}
 
-		gInfo.shaderProgram = shaderProgram;
+		gShaderInfo.shaderProgram = shaderProgram;
 
-		glDeleteShader(gInfo.vertexShader);
-		gInfo.vertexShader = 0;
-		glDeleteShader(gInfo.fragmentShader);
-		gInfo.fragmentShader = 0;
+		glDeleteShader(gShaderInfo.vertexShader);
+		gShaderInfo.vertexShader = 0;
+		glDeleteShader(gShaderInfo.fragmentShader);
+		gShaderInfo.fragmentShader = 0;
 
 		ret = 0;
 	} while (0);
@@ -230,7 +231,7 @@ int LinkProgram(void)
 		if (shaderProgram != 0) {
 			glDeleteProgram(shaderProgram);
 			shaderProgram = 0;
-			gInfo.shaderProgram = 0;
+			gShaderInfo.shaderProgram = 0;
 		}
 	}
 
@@ -238,10 +239,11 @@ int LinkProgram(void)
 }
 
 
-
+//
 int GenerateProgram(void)
 {
 	int ret = -1;
+	GLint location = -1;
 	
 	do {
 		ret = CompileShader(GL_VERTEX_SHADER, gVertexShaderSource);
@@ -260,36 +262,58 @@ int GenerateProgram(void)
 			break;
 		}
 
-		// get location
-		ATTR_LOCATION_POSITION = glGetAttribLocation(gInfo.shaderProgram, "a_position");
-		if (ATTR_LOCATION_POSITION == -1) {
+		// get location - a_position
+		location = glGetAttribLocation(gShaderInfo.shaderProgram, "a_position");
+		if (location == -1) {
 			ret = -4;
 			break;
 		}
-		ATTR_LOCATION_TEXCOORD = glGetAttribLocation(gInfo.shaderProgram, "a_texCoord");
-		if (ATTR_LOCATION_TEXCOORD == -1) {
+		gShaderInfo.al_position = location;
+		
+		// get location - a_texCoord
+		location = glGetAttribLocation(gShaderInfo.shaderProgram, "a_texCoord");
+		if (location == -1) {
 			ret = -5;
 			break;
 		}
-
+		gShaderInfo.al_texCoord = location;
+		
+		// get location - u_texture
+		location = glGetUniformLocation(gShaderInfo.shaderProgram, "u_texture");
+		if (location == -1) {
+			ret = -6;
+			break;
+		}
+		gShaderInfo.ul_texture = location;
+		
+		
+		glUseProgram(gShaderInfo.shaderProgram);
+		
+		
 		ret = 0;
 	} while (0);
 
 	if (ret <= -2) {
-		glDeleteShader(gInfo.fragmentShader);
-		gInfo.fragmentShader = 0;
+		glDeleteShader(gShaderInfo.vertexShader);
+		gShaderInfo.vertexShader = 0;
 	}
 	if (ret <= -3) {
-		glDeleteShader(gInfo.vertexShader);
-		gInfo.vertexShader = 0;
+		glDeleteShader(gShaderInfo.fragmentShader);
+		gShaderInfo.fragmentShader = 0;
 	}
 	if (ret <= -4) {
-		glDeleteProgram(gInfo.shaderProgram);
-		gInfo.shaderProgram = 0;
+		glDeleteProgram(gShaderInfo.shaderProgram);
+		gShaderInfo.shaderProgram = 0;
 	}
+	if (ret <= -5) {
+		gShaderInfo.al_position = -1;
+	}
+	if (ret <= -6) {
+		gShaderInfo.al_texCoord = -1;
+	}
+	
 	return ret;
 }
-
 
 
 int CreateWindowRect(MWOPENGLES20_WINDOW_INFO *info)
@@ -313,15 +337,15 @@ int CreateWindowRect(MWOPENGLES20_WINDOW_INFO *info)
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-	glEnableVertexAttribArray(ATTR_LOCATION_POSITION);
+	glEnableVertexAttribArray(gShaderInfo.al_position);
 	glVertexAttribPointer(
-		ATTR_LOCATION_POSITION,			// index
+		gShaderInfo.al_position,			// index
 		2, GL_FLOAT,					// count and type for one point
 		GL_FALSE,						// normalized
 		2 * sizeof(GLfloat),			// stride
 		(void*)0
 	);
-	glUseProgram(gInfo.shaderProgram);
+	glUseProgram(gShaderInfo.shaderProgram);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
 	ret = 0;
@@ -331,7 +355,7 @@ int CreateWindowRect(MWOPENGLES20_WINDOW_INFO *info)
 }
 
 
-
+//
 int CreateWindowFB(MWOPENGLES20_WINDOW_INFO *info)
 {
 	int ret = -1;
@@ -342,16 +366,20 @@ int CreateWindowFB(MWOPENGLES20_WINDOW_INFO *info)
 
 
 	do {
+		// create FBO
+		glGenFramebuffers(1, &fbo);
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+		
 		// texture - create
 		glGenTextures(1, &fboTexture);
 		glBindTexture(GL_TEXTURE_2D, fboTexture);
 		// texture - allocate memory, no data yet
 		glTexImage2D(GL_TEXTURE_2D,
 			0,						// mip level, always 0
-			GL_RGB,					// internalformat: how the texture will be stored internally on the GPU
+			GL_RGBA,				// internalformat: how the texture will be stored internally on the GPU
 			info->dx, info->dy,		// width and height
 			0,						// border, always 0
-			GL_RGB,					// format: the format of the source data being uploaded to the GPU
+			GL_RGBA,				// format: the format of the source data being uploaded to the GPU
 			GL_UNSIGNED_BYTE,		// type
 			NULL					// data: memory is allocated but uninitialized
 		);
@@ -364,15 +392,6 @@ int CreateWindowFB(MWOPENGLES20_WINDOW_INFO *info)
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-
-		// create FBO
-		glGenFramebuffers(1, &fbo);
-		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-		error = glGetError();
-		if (error != GL_NO_ERROR) {
-			ret = -1;
-			break;
-		}
 		// connect FBO to 2Dtexture we created just now
 		glFramebufferTexture2D(
 			GL_FRAMEBUFFER,
@@ -396,138 +415,101 @@ int CreateWindowFB(MWOPENGLES20_WINDOW_INFO *info)
 		// unbind FBO
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+		info->fbo = fbo;
+		info->fboTexture = fboTexture;
+
 		ret = 0;
 	} while (0);
 	
 
-
-	// upload 2D texture data
-	{
-		int i;
-
-		for (i = 0; i < MW_FB_SIZE; i += 3) {
-			info->buffer[i] = info->bkColor[0];
-			info->buffer[i+1] = info->bkColor[1];
-			info->buffer[i+2] = info->bkColor[2];
-		}
-
-		glBindTexture(GL_TEXTURE_2D, fboTexture);
-		glTexSubImage2D(
-			GL_TEXTURE_2D,
-			0,
-			0, 0, info->dx, info->dy,
-			GL_RGB,
-			GL_UNSIGNED_BYTE,
-			info->buffer
-		);
-		error = glGetError();
-		if (error != GL_NO_ERROR) {
-			ret = -1;
-		}
-	}
-
-	// render FBO
-	{
-		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-		glViewport(0, 0, info->dx, info->dy);
-
-		glClearColor(0.2f, 0.3f, 0.5f, 1.0f); // Example: Dark blue
-		glClear(GL_COLOR_BUFFER_BIT);
-
-		// (Optional) Render additional shapes here
-		// TODO
-	}
-
-	glUseProgram(gInfo.shaderProgram);
-
-	GLint textureUniform = glGetUniformLocation(gInfo.shaderProgram, "u_texture");
-	if (textureUniform == -1) {
-		printf("Failed to get uniform location for u_texture!\n");
-		ret = -1;
-	}
-	glUniform1i(textureUniform, 0);
-	glActiveTexture(GL_TEXTURE0);
-
-
-	// Rendering FBO Texture to Screen
-	{
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glViewport(0, 0, info->dx, info->dy);
-
-
-		glBindTexture(GL_TEXTURE_2D, fboTexture);
-
-		GLfloat vertices[] = {
-			// Positions   // Texture Coordinates
-			-1.0f, -1.0f,   0.0f, 0.0f, // Bottom-left
-			 1.0f, -1.0f,   1.0f, 0.0f, // Bottom-right
-			-1.0f,  1.0f,   0.0f, 1.0f, // Top-left
-			 1.0f,  1.0f,   1.0f, 1.0f  // Top-right
-		};
-
-		// Set vertex attributes and draw the quad
-		glEnableVertexAttribArray(0); // Position attribute
-		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices);
-
-		glEnableVertexAttribArray(1); // Texture coordinates attribute
-		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices + 2);
-
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	}
 	return ret;
 }
 
+int ReflectTexture2DefaultFB(int n)
+{
+	GLenum error;
+	int ret = -1;
+	MWOPENGLES20_WINDOW_INFO* winfo;
 
+	GLfloat vertices[] = {
+		// Positions   // Texture Coordinates
+		-1.0f, -1.0f,   0.0f, 0.0f, // Bottom-left
+		 1.0f, -1.0f,   1.0f, 0.0f, // Bottom-right
+		-1.0f,  1.0f,   0.0f, 1.0f, // Top-left
+		 1.0f,  1.0f,   1.0f, 1.0f  // Top-right
+	};
+
+	if (n >= MAX_WINDOW) {
+		return -1;
+	}
+
+	winfo = &gWinInfo[n];
+	if (!winfo->isOpened) {
+		return 0;
+	}
+
+	do{
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, winfo->fboTexture);
+		glUniform1i(gShaderInfo.ul_texture, 0);
+
+		// Rendering FBO Texture to Screen
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glViewport(winfo->x, winfo->y, winfo->dx, winfo->dy);
+
+		// Set vertex attributes and draw the quad
+		glVertexAttribPointer(gShaderInfo.al_position, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices);
+		error = glGetError();
+		if (error != GL_NO_ERROR) {
+			ret = -1;
+			break;
+		}
+		glEnableVertexAttribArray(gShaderInfo.al_position);
+
+		glVertexAttribPointer(gShaderInfo.al_texCoord, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices + 2);
+		glEnableVertexAttribArray(gShaderInfo.al_texCoord);
+		error = glGetError();
+		if (error != GL_NO_ERROR) {
+			ret = -1;
+			break;
+		}
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+		ret = 0;
+	}while (0);
+
+	return ret;
+}
+
+int ReflectAllTexture2DefaultFB(void)
+{
+	int i;
+
+	for (i = 0; i < MAX_WINDOW; i++) {
+		ReflectTexture2DefaultFB(i);
+	}
+}
 
 int Draw(void)
 {
 	GLenum error;
-	GLfloat vertexData[] = {
-		// Position (x, y)    Texture Coordinates (u, v)
-		-1.0f, -1.0f,        0.0f, 1.0f,  // Bottom left
-		 1.0f, -1.0f,        1.0f, 1.0f,  // Bottom right
-		-1.0f,  1.0f,        0.0f, 0.0f,  // Top left
-		 1.0f,  1.0f,        1.0f, 0.0f   // Top right
+	GLfloat quadVertices[] = {
+		-1.0f, -1.0f, 0.0f, 0.0f,
+		 1.0f, -1.0f, 1.0f, 0.0f,
+		-1.0f,  1.0f, 0.0f, 1.0f,
+		 1.0f,  1.0f, 1.0f, 1.0f
 	};
 
 
-	glUseProgram(gInfo.shaderProgram);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), quadVertices);
+	glEnableVertexAttribArray(0);
 
-	glVertexAttribPointer(ATTR_LOCATION_POSITION, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)0);
-	glEnableVertexAttribArray(ATTR_LOCATION_POSITION);
-	error = glGetError();
-	if (error != GL_NO_ERROR) {
-		return -1;
-	}
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), quadVertices + 2);
+	glEnableVertexAttribArray(1);
 
-	glVertexAttribPointer(ATTR_LOCATION_TEXCOORD, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
-	glEnableVertexAttribArray(ATTR_LOCATION_TEXCOORD);
-	error = glGetError();
-	if (error != GL_NO_ERROR) {
-		return -1;
-	}
-
-
-	GLint textureLocation = glGetUniformLocation(gInfo.shaderProgram, "u_texture");
-	glUniform1i(textureLocation, 0);
-	error = glGetError();
-	if (error != GL_NO_ERROR) {
-		return -1;
-	}
-	glActiveTexture(GL_TEXTURE0);
-
-
-
-	eglSwapInterval(gInfo.display, 1);
-	error = glGetError();
-	if (error != GL_NO_ERROR) {
-		return -1;
-	}
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	error = glGetError();
-	if (error != GL_NO_ERROR) {
-		return -1;
-	}
+
 	eglSwapBuffers(gInfo.display, gInfo.surface);
 	error = glGetError();
 	if (error != GL_NO_ERROR) {

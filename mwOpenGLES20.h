@@ -19,24 +19,32 @@ typedef struct _MWOPENGLES20_NATIVE_INFO {
 	// windows: HWND
 	EGLNativeWindowType nativeWindow;
 	
-} MWOPENGLES20_NATIVE_INFO;
+} MWOPENGLES20_NATIVE_INFO, *PMWOPENGLES20_NATIVE_INFO;
+
+
+typedef struct _MWOPENGLES20_SHADER_INFO {
+	GLuint vertexShader;		// 0 not valid
+	GLuint fragmentShader;		// 0 not valid
+	GLuint shaderProgram;		// 0 not valid
+	
+	// attribute
+	GLint al_position;			// -1 not valid, usually 0
+	GLint al_texCoord;			// -1 not valid, usually 1
+	// uniform
+	GLint ul_texture;			// -1 not valid, usually 0
+} MWOPENGLES20_SHADER_INFO, *PMWOPENGLES20_SHADER_INFO;
 
 
 typedef struct _MWOPENGLES20_INFO {
-	MWOPENGLES20_NATIVE_INFO native;
-	
 	EGLDisplay display;
 	EGLSurface surface;
-	
-	GLuint vertexShader;
-	GLuint fragmentShader;
-	GLuint shaderProgram;
 } MWOPENGLES20_INFO;
 
 
 #define MW_FB_SIZE	(DOTS_X * DOTS_Y * 3)
 
 typedef struct _MWOPENGLES20_WINDOW_INFO {
+	int isOpened;
 	int no;
 	int depth;
 	int x;
@@ -45,11 +53,22 @@ typedef struct _MWOPENGLES20_WINDOW_INFO {
 	int dy;
 	unsigned char bkColor[4];		// R G B and Alpha
 
-	GLubyte buffer[MW_FB_SIZE];
+	// OpenGL ES stuff
+	GLuint fbo;						// 0 not valid, starts from 1
+	GLuint fboTexture;				// 0 not valid, starts from 1
+	
+	
+	
+	//GLubyte buffer[MW_FB_SIZE];
 } MWOPENGLES20_WINDOW_INFO;
 
-extern char gVertexShaderSource[];
-extern char gFragmentShaderSource[];
+
+
+extern MWOPENGLES20_NATIVE_INFO gNativeInfo;
+extern MWOPENGLES20_INFO gInfo;
+extern MWOPENGLES20_SHADER_INFO gShaderInfo;
+extern MWOPENGLES20_WINDOW_INFO gWinInfo[MAX_WINDOW];
+
 
 int InitEGLSettings(MWOPENGLES20_NATIVE_INFO *native);
 
@@ -57,10 +76,9 @@ int CompileShader(GLenum shaderType, char* source);
 int LinkProgram(void);
 int GenerateProgram(void);
 
-int CreateWindowRect(MWOPENGLES20_WINDOW_INFO *info);
 int CreateWindowFB(MWOPENGLES20_WINDOW_INFO *info);
-
-int Draw(void);
+int ReflectTexture2DefaultFB(int n);
+int ReflectAllTexture2DefaultFB(void);
 
 
 #endif /* _MW_OPENGLES20_H_ */
